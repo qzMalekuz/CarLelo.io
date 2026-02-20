@@ -41,7 +41,7 @@ router.get("/", authMiddleware, async (req: Request, res: Response) => {
   }
 });
 
-router.put("/", authMiddleware, async(req: Request, res: Response) => {
+router.put("/:bookingId", authMiddleware, async (req: Request, res: Response) => {
   const bookingId = req.params.bookingId;
   const userId = req.user.userId;
   const { carName, days, rentPerDay, status } = req.body;
@@ -51,7 +51,7 @@ router.put("/", authMiddleware, async(req: Request, res: Response) => {
     [bookingId]
   );
 
-  if(existingBooking.rows.length === 0) {
+  if (existingBooking.rows.length === 0) {
     return res.status(404).json({
       success: false,
       error: "booking not found"
@@ -59,14 +59,14 @@ router.put("/", authMiddleware, async(req: Request, res: Response) => {
   }
 
   const booking = existingBooking.rows[0];
-  if(booking.user_id !== userId) {
+  if (booking.user_id !== userId) {
     return res.status(403).json({
       success: false,
       error: "booking does not belong to user"
     });
   }
 
-  if((days && days >= 365) || (rentPerDay && rentPerDay > 2000)) {
+  if ((days && days >= 365) || (rentPerDay && rentPerDay > 2000)) {
     return res.status(400).json({
       success: false,
       error: "invalid inputs"
@@ -81,37 +81,37 @@ router.put("/", authMiddleware, async(req: Request, res: Response) => {
     await client.query(
       'UPDATE bookings SET car_name = $1, days = $2, rent_per_day = $3 WHERE id = $4',
       [newCarName, newDays, newRentPerDay, bookingId]
-      );
-    }
+    );
+  }
 
-  if(status) {
+  if (status) {
     await client.query(
       `UPDATE bookings SET status = $1 WHERE id  = $2`,
       [status, bookingId]
     );
   }
 
-    const updated = await client.query(
-      'SELECT * FROM bookings WHERE id = $1',
-      [bookingId]
-    );
+  const updated = await client.query(
+    'SELECT * FROM bookings WHERE id = $1',
+    [bookingId]
+  );
 
-    const updatedBooking = updated.rows[0];
+  const updatedBooking = updated.rows[0];
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        message: "Booking updated successfully",
-        booking: {
-          id: updatedBooking.id,
-          car_name: updatedBooking.car_name,
-          days: updatedBooking.days,
-          rent_per_day: updatedBooking.rent_per_day,
-          status: updatedBooking.status,
-          totalCost: updatedBooking.days * updatedBooking.rent_per_day
-        }
+  return res.status(200).json({
+    success: true,
+    data: {
+      message: "Booking updated successfully",
+      booking: {
+        id: updatedBooking.id,
+        car_name: updatedBooking.car_name,
+        days: updatedBooking.days,
+        rent_per_day: updatedBooking.rent_per_day,
+        status: updatedBooking.status,
+        totalCost: updatedBooking.days * updatedBooking.rent_per_day
       }
-    });
+    }
+  });
 });
 
 router.delete("/:bookingId", authMiddleware, async (req, res) => {
