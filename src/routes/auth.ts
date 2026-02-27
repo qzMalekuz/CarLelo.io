@@ -12,7 +12,7 @@ router.post("/signup", async (req: Request, res: Response) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res.status(400).json({ error: "invalid inputs" });
+    return res.status(400).json({ success: false, error: "invalid inputs" });
   }
 
   const existingUser = await client.query(
@@ -21,7 +21,7 @@ router.post("/signup", async (req: Request, res: Response) => {
   );
 
   if (existingUser.rows.length > 0) {
-    return res.status(409).json({ error: "username already exists" });
+    return res.status(409).json({ success: false, error: "username already exists" });
   }
 
   const hashed = await bcrypt.hash(password, saltRounds);
@@ -32,13 +32,20 @@ router.post("/signup", async (req: Request, res: Response) => {
   );
 
   res.status(201).json({
-    message: "user created",
-    userId: result.rows[0].id,
+    success: true,
+    data: {
+      message: "User created successfully",
+      userId: result.rows[0].id,
+    }
   });
 });
 
-router.post("/signin", async (req: Request, res: Response) => {
+router.post("/login", async (req: Request, res: Response) => {
   const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: "invalid inputs" });
+  }
 
   const result = await client.query(
     "SELECT * FROM users WHERE username = $1",
@@ -46,14 +53,14 @@ router.post("/signin", async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0) {
-    return res.status(401).json({ error: "user does not exist" });
+    return res.status(401).json({ success: false, error: "user does not exist" });
   }
 
   const user = result.rows[0];
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
-    return res.status(401).json({ error: "incorrect password" });
+    return res.status(401).json({ success: false, error: "incorrect password" });
   }
 
   const token = jwt.sign(
@@ -62,7 +69,13 @@ router.post("/signin", async (req: Request, res: Response) => {
     { expiresIn: "24h" }
   );
 
-  res.json({ token });
+  res.json({
+    success: true,
+    data: {
+      message: "Login successful",
+      token
+    }
+  });
 });
 
 export default router;

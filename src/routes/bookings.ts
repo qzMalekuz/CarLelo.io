@@ -9,36 +9,95 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user.userId;
 
   if (!carName || !days || !rentPerDay) {
-    return res.status(400).json({ error: "invalid input" });
+    return res.status(400).json({ success: false, error: "invalid inputs" });
+  }
+
+  if (days >= 365 || rentPerDay > 2000) {
+    return res.status(400).json({ success: false, error: "invalid inputs" });
   }
 
   const result = await client.query(
-    `INSERT INTO bookings (user_id, car_name, days, rent_per_day)
-     VALUES ($1, $2, $3, $4) RETURNING id`,
+    `INSERT INTO bookings (user_id, car_name, days, rent_per_day, status)
+     VALUES ($1, $2, $3, $4, 'booked') RETURNING id`,
     [userId, carName, days, rentPerDay]
   );
 
   res.status(201).json({
-    bookingId: result.rows[0].id,
-    totalCost: days * rentPerDay,
+    success: true,
+    data: {
+      message: "Booking created successfully",
+      bookingId: result.rows[0].id,
+      totalCost: days * rentPerDay,
+    }
   });
 });
 
 router.get("/", authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user.userId;
-  const { summary } = req.query;
+  const { summary, bookingId } = req.query;
+
+  if (bookingId) {
+    const result = await client.query(
+      `SELECT * FROM bookings WHERE id = $1 AND user_id = $2`,
+      [bookingId, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: "bookingId not found" });
+    }
+
+    const b = result.rows[0];
+    return res.json({
+      success: true,
+      data: [{
+        id: b.id,
+        car_name: b.car_name,
+        days: b.days,
+        rent_per_day: b.rent_per_day,
+        status: b.status,
+        totalCost: b.days * b.rent_per_day
+      }]
+    });
+  }
 
   if (summary === "true") {
     const result = await client.query(
       `SELECT COUNT(*) AS total,
               COALESCE(SUM(days * rent_per_day), 0) AS amount
        FROM bookings
-       WHERE user_id = $1`,
+       WHERE user_id = $1 AND status IN ('booked', 'completed')`,
       [userId]
     );
 
-    return res.json(result.rows[0]);
+    return res.json({
+      success: true,
+      data: {
+        userId: userId,
+        username: req.user.username,
+        totalBookings: parseInt(result.rows[0].total, 10),
+        totalAmountSpent: parseInt(result.rows[0].amount, 10)
+      }
+    });
   }
+
+  const result = await client.query(
+    `SELECT * FROM bookings WHERE user_id = $1`,
+    [userId]
+  );
+
+  const parsedBookings = result.rows.map(b => ({
+    id: b.id,
+    car_name: b.car_name,
+    days: b.days,
+    rent_per_day: b.rent_per_day,
+    status: b.status,
+    totalCost: b.days * b.rent_per_day
+  }));
+
+  return res.json({
+    success: true,
+    data: parsedBookings
+  });
 });
 
 router.put("/:bookingId", authMiddleware, async (req: Request, res: Response) => {
@@ -86,7 +145,7 @@ router.put("/:bookingId", authMiddleware, async (req: Request, res: Response) =>
 
   if (status) {
     await client.query(
-      `UPDATE bookings SET status = $1 WHERE id  = $2`,
+      `UPDATE bookings SET status = $1 WHERE id = $2`,
       [status, bookingId]
     );
   }
@@ -114,7 +173,7 @@ router.put("/:bookingId", authMiddleware, async (req: Request, res: Response) =>
   });
 });
 
-router.delete("/:bookingId", authMiddleware, async (req, res) => {
+router.delete("/:bookingId", authMiddleware, async (req: Request, res: Response) => {
   const { bookingId } = req.params;
   const userId = req.user.userId;
 
@@ -124,16 +183,21 @@ router.delete("/:bookingId", authMiddleware, async (req, res) => {
   );
 
   if (booking.rows.length === 0) {
-    return res.status(404).json({ error: "booking not found" });
+    return res.status(404).json({ success: false, error: "booking not found" });
   }
 
   if (booking.rows[0].user_id !== userId) {
-    return res.status(403).json({ error: "not your booking" });
+    return res.status(403).json({ success: false, error: "booking does not belong to user" });
   }
 
   await client.query("DELETE FROM bookings WHERE id = $1", [bookingId]);
 
-  res.json({ message: "Booking deleted" });
+  res.json({
+    success: true,
+    data: {
+      message: "Booking deleted successfully"
+    }
+  });
 });
 
 export default router;
